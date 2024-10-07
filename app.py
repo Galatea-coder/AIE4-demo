@@ -47,7 +47,7 @@ HF_TOKEN = os.environ["HF_TOKEN"]
 """
 ### 1. CREATE TEXT LOADER AND LOAD DOCUMENTS
 ### NOTE: PAY ATTENTION TO THE PATH THEY ARE IN. 
-text_loader = TextLoader("paul-graham-to-kindle/paul_graham_essays.txt")
+text_loader = TextLoader("paul_graham_essays.txt")
 documents = text_loader.load()
 
 ### 2. CREATE TEXT SPLITTER AND SPLIT DOCUMENTS
@@ -88,7 +88,7 @@ async def main():
         pbars = []
         
         for i, batch in enumerate(batches):
-            pbar = tqdm(total=len(batch), desc=f"Batch {i+1}/{len(batches)}", position=i)
+            pbar = tqdm(total=len(batch), desc=f"Batch {i+1}/{len(batches)}")
             pbars.append(pbar)
             
             if i == 0:
@@ -121,28 +121,37 @@ hf_retriever = asyncio.run(run())
 """
 ### 1. DEFINE STRING TEMPLATE
 
-from langchain_core.prompts import ChatPromptTemplate
+RAG_PROMPT_TEMPLATE = """\
+<|start_header_id|>system<|end_header_id|>
+You are a helpful assistant. You answer user questions based on provided context. If you can't answer the question with the provided context, say you don't know.<|eot_id|>
 
-RAG_TEMPLATE = """\
-You are a helpful and kind assistant. Use the context provided below to answer the question.
-Never reference this prompt, or the existence of context. Use the chat history to maintain continuity in the conversation
-If you do not know the answer, or are unsure, say you don't know.
-
-Query:
-{question}
+<|start_header_id|>user<|end_header_id|>
+User Query:
+{query}
 
 Context:
-{context}
+{context}<|eot_id|>
+
+<|start_header_id|>assistant<|end_header_id|>
 """
 
-rag_prompt = ChatPromptTemplate.from_template(RAG_TEMPLATE)
+rag_prompt = PromptTemplate.from_template(RAG_PROMPT_TEMPLATE)
 
 # -- GENERATION -- #
 """
 1. Create a HuggingFaceEndpoint for the LLM
 """
 ### 1. CREATE HUGGINGFACE ENDPOINT FOR LLM
-hf_llm = HF_LLM_ENDPOINT
+
+hf_llm = HuggingFaceEndpoint(
+    endpoint_url=HF_LLM_ENDPOINT,
+    max_new_tokens=512,
+    top_k=10,
+    top_p=0.95,
+    temperature=0.3,
+    repetition_penalty=1.15,
+    huggingfacehub_api_token=HF_TOKEN,
+)
 
 @cl.author_rename
 def rename(original_author: str):
@@ -167,10 +176,10 @@ async def start_chat():
     """
 
     ### BUILD LCEL RAG CHAIN THAT ONLY RETURNS TEXT
-
-
+    
     lcel_rag_chain = {"context": itemgetter("query") | hf_retriever, "query": itemgetter("query")}| rag_prompt | hf_llm
-  
+
+
 
     cl.user_session.set("lcel_rag_chain", lcel_rag_chain)
 
